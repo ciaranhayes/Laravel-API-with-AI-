@@ -15,7 +15,7 @@ class ChatbotController extends Controller
             'stream' => false
         ]);
 
-        return $response->json();
+        return $response->json(['message' => 'response']);
     }
 }
 
