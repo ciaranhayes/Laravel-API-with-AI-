@@ -6,9 +6,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Auth;
 use App\Models\ChatHistory;
+use Ramsey\Uuid\Uuid;
 
-class ChatbotController extends Controller
-{
+class ChatbotController extends Controller {
     public function chat(Request $request)
     {
         $request->validate([
@@ -16,15 +16,23 @@ class ChatbotController extends Controller
             'session_id' => 'nullable|string',
         ]);
 
-        $userId = Auth::id();
-        $sessionId = $request->session_id ?? uniqid();
+        $user = Auth::user();
+        $userId = $user?->id;
 
-        // Build chat history for user if logged in
         $chatHistory = [];
-        if ($userId) {
-            $chatHistory = ChatHistory::where('user_id', $userId)
-                ->where('session_id', $sessionId)
-                ->orderBy('created_at')
+
+        if ($userId && !$request->sessionId) {
+            $sessionId = (string) Uuid::uuid4();
+            $messages = [[
+                'role' => 'user',
+                'content' => $request->message
+            ]];
+        } else { 
+            $sessionId = $request->session_id;
+        }
+
+        if ($sessionId) {
+            $chatHistory = ChatHistory::where('session_id', $sessionId)
                 ->get()
                 ->flatMap(fn($chat) => [
                     ['role' => 'user', 'content' => $chat->user_message],
@@ -32,13 +40,12 @@ class ChatbotController extends Controller
                 ])
                 ->toArray();
         }
+        
 
-        // Append current user message
         $messages = array_merge($chatHistory, [
             ['role' => 'user', 'content' => $request->message]
         ]);
 
-        // Send to Ollama
         $response = Http::post('http://localhost:11434/api/chat', [
             'model' => 'mistral',
             'messages' => $messages,
@@ -47,11 +54,9 @@ class ChatbotController extends Controller
 
         $responseData = $response->json();
 
-        // Force API to always give a response
         $botResponse = $responseData['response']
         ?? ($responseData['message']['content'] ?? '[No response from model]');
 
-        // Save to DB
         ChatHistory::create([
             'user_id' => $userId,
             'session_id' => $sessionId,
@@ -59,10 +64,14 @@ class ChatbotController extends Controller
             'bot_response' => $botResponse,
         ]);
 
-        // Return back to frontend
-        return response()->json([
+        $responseForUser = [
             'response' => $botResponse,
-            'session_id' => $sessionId,
-        ]);
+        ];
+
+        if ($user) {
+            $responsePayload['session_id'] = $sessionId;
+        }
+
+        return response()->json($responseForUser);
     }
 }
