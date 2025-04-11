@@ -69,7 +69,7 @@ class ChatbotController extends Controller {
         ];
 
         if ($user) {
-            $responsePayload['session_id'] = $sessionId;
+            $responseForUser['session_id'] = $sessionId;
         }
 
         return response()->json($responseForUser);
