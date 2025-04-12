@@ -19,4 +19,6 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::get('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
-Route::post('/chat', [ChatbotController::class, 'chat']);
+Route::post('/chat', [ChatbotController::class, 'chat'])->middleware('auth:sanctum');
+
+Route::post('/chat_free', [ChatbotController::class, 'chat']);

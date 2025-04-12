@@ -9,8 +9,7 @@ use App\Models\ChatHistory;
 use Ramsey\Uuid\Uuid;
 
 class ChatbotController extends Controller {
-    public function chat(Request $request)
-    {
+    public function chat(Request $request) {
         $request->validate([
             'message' => 'required|string',
             'session_id' => 'nullable|string',
@@ -20,27 +19,22 @@ class ChatbotController extends Controller {
         $userId = $user?->id;
 
         $chatHistory = [];
-
-        if ($userId && !$request->sessionId) {
+        $sessionId = $request->session_id;
+        
+        if ($userId && !$sessionId) {
             $sessionId = (string) Uuid::uuid4();
-            $messages = [[
-                'role' => 'user',
-                'content' => $request->message
-            ]];
-        } else { 
-            $sessionId = $request->session_id;
         }
 
         if ($sessionId) {
             $chatHistory = ChatHistory::where('session_id', $sessionId)
                 ->get()
-                ->flatMap(fn($chat) => [
+                ->map(fn($chat) => [
                     ['role' => 'user', 'content' => $chat->user_message],
                     ['role' => 'assistant', 'content' => $chat->bot_response],
                 ])
+                ->flatten(1)
                 ->toArray();
         }
-        
 
         $messages = array_merge($chatHistory, [
             ['role' => 'user', 'content' => $request->message]
@@ -53,16 +47,16 @@ class ChatbotController extends Controller {
         ]);
 
         $responseData = $response->json();
+        $botResponse = $responseData['message']['content'] ?? '[No response from model]';
 
-        $botResponse = $responseData['response']
-        ?? ($responseData['message']['content'] ?? '[No response from model]');
-
-        ChatHistory::create([
-            'user_id' => $userId,
-            'session_id' => $sessionId,
-            'user_message' => $request->message,
-            'bot_response' => $botResponse,
-        ]);
+        if ($userId && $sessionId) {
+            ChatHistory::create([
+                'user_id' => $userId,
+                'session_id' => $sessionId,
+                'user_message' => $request->message,
+                'bot_response' => $botResponse,
+            ]);
+        }
 
         $responseForUser = [
             'response' => $botResponse,
@@ -72,6 +66,10 @@ class ChatbotController extends Controller {
             $responseForUser['session_id'] = $sessionId;
         }
 
-        return response()->json($responseForUser);
+        return response()->json([
+            'response' => $botResponse,
+            'chat_history' => $chatHistory,
+            'session_id' => $sessionId,
+        ]);
     }
 }
